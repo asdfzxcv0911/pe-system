@@ -1,56 +1,28 @@
 import streamlit as st
-from streamlit_gsheets import GSheetsConnection
 import pandas as pd
-from datetime import datetime
 
-# 手機版/電腦版自動優化界面
-st.set_page_config(page_title="體育課管理系統", layout="wide")
-st.markdown("""<style>
-    @media (max-width: 640px) { .main .block-container { padding: 10px; } }
-    @media (min-width: 1024px) { .main .block-container { max-width: 900px; margin: auto; } }
-    .stButton>button { width: 100%; border-radius: 10px; height: 3em; background-color: #007bff; color: white; }
-</style>""", unsafe_allow_html=True)
+st.title("🔍 系統連線診斷中...")
 
-# 連接 Google Sheets
-conn = st.connection("gsheets", type=GSheetsConnection)
+# 1. 檢查 Secrets 是否有讀到
+if "connections" not in st.secrets:
+    st.error("❌ 系統完全讀不到 Secrets 設定，請檢查 Streamlit Cloud 的 Secrets 區塊。")
+else:
+    target_url = st.secrets["connections"]["gsheets"]["spreadsheet"]
+    st.write(f"✅ 成功讀取 Secrets 網址：`{target_url}`")
 
-st.title("🏃‍♂️ 體育課點名成績系統")
-
-# 選擇班級
-classes = ["402", "601", "602", "603", "604"]
-selected_class = st.sidebar.selectbox("選擇目前班級", classes)
-
-# 讀取資料
-df = conn.read(worksheet=selected_class, ttl=0).dropna(how='all')
-
-tab1, tab2, tab3 = st.tabs(["📅 點名", "🏆 成績", "📊 總表"])
-today = datetime.now().strftime("%Y-%m-%d")
-
-with tab1:
-    st.header(f"{today} 點名")
-    if today not in df.columns: df[today] = "出席"
+    # 2. 嘗試用最原始的方式讀取 (不透過 GSheets 套件)
+    # 將網址轉換成 CSV 下載格式
+    csv_url = target_url.replace("/edit", "/export?format=csv")
     
-    with st.form("att_form"):
-        for i, row in df.iterrows():
-            col1, col2 = st.columns([1, 2])
-            col1.write(f"**{row['姓名']}**")
-            df.at[i, today] = col2.segmented_control("狀態", ["出席", "遲到", "缺席", "公假"], default=row[today], key=f"a_{selected_class}_{i}", label_visibility="collapsed")
-        if st.form_submit_button("上傳點名紀錄"):
-            conn.update(worksheet=selected_class, data=df)
-            st.success("點名已同步至 Google Sheets！")
+    st.write("正在測試各班級分頁...")
+    classes = ["402", "601", "602", "603", "604"]
+    
+    for cls in classes:
+        try:
+            # 嘗試讀取特定分頁
+            test_df = pd.read_csv(f"{csv_url}&sheet={cls}")
+            st.success(f"✅ 班級 {cls} 連線成功！偵測到欄位：{list(test_df.columns)}")
+        except Exception as e:
+            st.error(f"❌ 班級 {cls} 讀取失敗。原因：{e}")
 
-with tab2:
-    item = st.text_input("測驗項目", "平時成績")
-    if item not in df.columns: df[item] = 0
-    with st.form("score_form"):
-        for i, row in df.iterrows():
-            col1, col2 = st.columns([1, 2])
-            col1.write(f"**{row['姓名']}**")
-            df.at[i, item] = col2.number_input("分數", value=float(df.at[i, item]), key=f"s_{selected_class}_{i}", label_visibility="collapsed")
-        if st.form_submit_button("儲存成績"):
-            conn.update(worksheet=selected_class, data=df)
-            st.success(f"{item} 成績已同步！")
-
-with tab3:
-    st.dataframe(df, use_container_width=True)
-    if st.button("手動更新數據"): st.rerun()
+st.info("請把上面的測試結果（特別是紅色的錯誤訊息）截圖或複製傳給我。")
