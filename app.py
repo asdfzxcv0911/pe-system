@@ -6,58 +6,59 @@ from datetime import datetime
 # 1. 網頁基礎設定
 st.set_page_config(page_title="體育點名系統", layout="wide")
 
-# 2. 極簡化 CSS：大幅縮減間距與優化對比
+# 2. 超極簡 CSS：強制壓縮所有間距並修正顏色
 st.markdown("""<style>
-    /* 移除頂部與元件間的留白 */
-    .main .block-container { padding-top: 1rem; padding-bottom: 1rem; }
-    [data-testid="stVerticalBlock"] > div { gap: 0rem; } 
+    /* 移除所有預設留白 */
+    .main .block-container { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+    [data-testid="stVerticalBlock"] > div { gap: 0rem !important; }
+    [data-testid="column"] { padding: 0px !important; }
     
-    /* 統計單排看板：緊湊設計 */
+    /* 統計看板：純黑字體與極簡間距 */
     .stat-row {
         display: flex;
         justify-content: space-around;
-        background-color: #ffffff;
-        padding: 5px 0;
-        border-bottom: 2px solid #333;
-        margin-bottom: 10px;
+        padding: 2px 0;
+        border-bottom: 2px solid #000;
+        margin-bottom: 5px;
     }
     .stat-box { text-align: center; flex: 1; }
-    .stat-label { font-size: 0.7em; color: #666; display: block; }
-    .stat-val { font-weight: 800; font-size: 0.9em; }
+    .stat-label { font-size: 0.7em; color: #444; display: block; }
+    .stat-val { font-weight: 900; font-size: 1em; color: #000000 !important; }
 
-    /* 學生列：極小化間距 */
+    /* 學生列：完全壓縮高度 */
     .student-row { 
-        border-bottom: 1px solid #f0f0f0; 
-        padding: 2px 0; 
-        margin: 0;
-        display: flex;
-        align-items: center;
+        border-bottom: 1px solid #eee; 
+        padding: 0px; 
+        margin: 0px;
+        line-height: 1;
     }
     
-    /* 男女姓名顏色與大小 */
-    .boy-name { color: #0056b3; font-weight: bold; font-size: 0.95em; }
-    .girl-name { color: #c71585; font-weight: bold; font-size: 0.95em; }
+    /* 姓名樣式：縮小字體以符合緊湊佈局 */
+    .boy-name { color: #0056b3; font-weight: bold; font-size: 0.9em; }
+    .girl-name { color: #c71585; font-weight: bold; font-size: 0.9em; }
 
-    /* 儲存按鈕：顯眼且適中 */
+    /* 調整選擇器按鈕的高度，使其不那麼佔空間 */
+    div[data-baseweb="tab-list"] { margin-bottom: 5px; }
+    
+    /* 儲存按鈕 */
     .stButton>button { 
         width: 100%; 
         height: 3em; 
-        background-color: #1a73e8; 
+        background-color: #000; 
         color: white; 
-        border-radius: 8px; 
-        font-weight: bold;
-        margin-top: 15px;
+        border-radius: 5px; 
+        margin-top: 10px;
     }
     
     @media (min-width: 1024px) {
-        .main .block-container { max-width: 600px; margin: auto; }
+        .main .block-container { max-width: 500px; margin: auto; }
     }
 </style>""", unsafe_allow_html=True)
 
-# 3. 建立連接
+# 3. 建立連線
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# 4. 頂部選擇區
+# 4. 頂部選擇區 (班級與日期)
 classes = ["402", "601", "602", "603", "604"]
 selected_class = st.segmented_control("班級", classes, default="402")
 selected_date = st.date_input("日期", datetime.now())
@@ -71,19 +72,15 @@ except Exception:
     st.error("讀取失敗")
     st.stop()
 
-if df.empty or '姓名' not in df.columns:
-    st.warning(f"名單空白")
-    st.stop()
-
-# --- 6. 統計看板 ---
+# --- 6. 統計看板：數字全部改為純黑 ---
 boys = len(df[df['性別'] == '男'])
 girls = len(df[df['性別'] == '女'])
 st.markdown(f"""
     <div class="stat-row">
         <div class="stat-box"><span class="stat-label">班級</span><span class="stat-val">{selected_class}</span></div>
-        <div class="stat-box"><span class="stat-label">男生</span><span class="stat-val" style="color:#0056b3">{boys}人</span></div>
-        <div class="stat-box"><span class="stat-label">女生</span><span class="stat-val" style="color:#c71585">{girls}人</span></div>
-        <div class="stat-box"><span class="stat-label">總人數</span><span class="stat-val">{len(df)}人</span></div>
+        <div class="stat-box"><span class="stat-label">男生</span><span class="stat-val">{boys}</span></div>
+        <div class="stat-box"><span class="stat-label">女生</span><span class="stat-val">{girls}</span></div>
+        <div class="stat-box"><span class="stat-label">總人數</span><span class="stat-val">{len(df)}</span></div>
     </div>
 """, unsafe_allow_html=True)
 
@@ -91,28 +88,26 @@ st.markdown(f"""
 tab1, tab2 = st.tabs(["📅 點名", "📊 總表"])
 
 with tab1:
-    # --- 重要：固定預設為出席 ---
-    # 無論 Google 表格原本寫什麼，載入時 App 介面一律先呈現「出席」
+    # 強制預設為出席
     df[date_str] = "出席"
-    
     options = ["出席", "遲到", "缺席", "公假"]
     
     with st.form("att_form"):
         for i, row in df.iterrows():
             st.markdown(f"<div class='student-row'>", unsafe_allow_html=True)
-            c1, c2 = st.columns([1.2, 3])
+            c1, c2 = st.columns([1, 2.5])
             
-            # 姓名與顏色
+            # 姓名顯示
             gender = str(row.get('性別', ''))
             name_text = f"{row['座號']}.{row['姓名']}"
             if gender == "男":
-                c1.markdown(f"<span class='boy-name'>♂ {name_text}</span>", unsafe_allow_html=True)
+                c1.markdown(f"<span class='boy-name'>{name_text}</span>", unsafe_allow_html=True)
             elif gender == "女":
-                c1.markdown(f"<span class='girl-name'>♀ {name_text}</span>", unsafe_allow_html=True)
+                c1.markdown(f"<span class='girl-name'>{name_text}</span>", unsafe_allow_html=True)
             else:
                 c1.markdown(f"**{name_text}**", unsafe_allow_html=True)
             
-            # 點名按鈕 (強制預設為 出席)
+            # 點名按鈕
             df.at[i, date_str] = c2.segmented_control(
                 "狀態", options, default="出席", 
                 key=f"b_{selected_class}_{date_str}_{i}", 
@@ -120,13 +115,13 @@ with tab1:
             )
             st.markdown("</div>", unsafe_allow_html=True)
             
-        if st.form_submit_button(f"🚀 儲存並同步至雲端"):
+        if st.form_submit_button(f"🚀 儲存紀錄"):
             try:
                 conn.update(worksheet=selected_class, data=df)
                 st.success(f"已儲存！")
                 st.balloons()
-            except Exception as e:
-                st.error(f"失敗：{e}")
+            except Exception:
+                st.error(f"儲存失敗")
 
 with tab2:
     st.dataframe(df, use_container_width=True, hide_index=True)
