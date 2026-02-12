@@ -6,40 +6,45 @@ from datetime import datetime
 # 頁面基本配置
 st.set_page_config(page_title="體育課管理系統", layout="wide")
 
-# CSS 優化：手機點擊更輕鬆
+# CSS 優化：讓手機點擊按鈕更輕鬆
 st.markdown("""<style>
     @media (max-width: 640px) { .main .block-container { padding: 10px; } }
     @media (min-width: 1024px) { .main .block-container { max-width: 800px; margin: auto; } }
     .stButton>button { width: 100%; border-radius: 10px; height: 3.5em; background-color: #007bff; color: white; font-weight: bold; }
 </style>""", unsafe_allow_html=True)
 
-# 建立連線
-conn = st.connection("gsheets", type=GSheetsConnection)
+# 1. 取得 Secrets 網址並進行「防錯清洗」
+try:
+    raw_url = st.secrets["connections"]["gsheets"]["spreadsheet"]
+    # 確保網址格式純淨，只取到 /edit 以前的部分
+    base_url = raw_url.split('/edit')[0]
+    # 建立連線物件（用於寫入資料）
+    conn = st.connection("gsheets", type=GSheetsConnection)
+except Exception as e:
+    st.error("❌ Secrets 設定有誤，請檢查 Streamlit Cloud 的設定。")
+    st.stop()
 
 st.title("🏃‍♂️ 體育課點名與成績系統")
 
-# 側邊欄切換班級
+# 2. 側邊欄切換班級
 classes = ["402", "601", "602", "603", "604"]
 selected_class = st.sidebar.selectbox("請選擇班級", classes)
 
-# 讀取資料
+# 3. 讀取資料 (使用診斷成功的 CSV 讀取法)
 try:
-    # 讀取目前選中班級的分頁
-    df = conn.read(worksheet=selected_class, ttl=0).dropna(how='all')
+    csv_url = f"{base_url}/export?format=csv&sheet={selected_class}"
+    df = pd.read_csv(csv_url).dropna(how='all')
     
-    # 自動處理「座號」：將座號轉為字串並去掉小數點 (.0)
-    if '座號' in df.columns:
-        df['座號'] = df['座號'].astype(str).str.split('.').str[0]
-    elif '學號' in df.columns:
-        df['座號'] = df['學號'].astype(str).str.split('.').str[0]
-        
+    # 自動處理「座號」：去掉 1.0 這種小數點
+    for col in ['座號', '學號']:
+        if col in df.columns:
+            df[col] = df[col].astype(str).str.split('.').str[0]
 except Exception as e:
-    st.error("⚠️ 系統讀取不到資料")
-    st.write("請查看下方的原始錯誤訊息，這對修復非常有幫助：")
-    st.code(str(e)) # 顯示真正的錯誤原因
+    st.error(f"⚠️ 無法讀取 {selected_class} 的資料")
+    st.write("錯誤代碼：", e)
     st.stop()
 
-# 建立功能頁籤
+# 4. 建立功能頁籤
 tab1, tab2, tab3 = st.tabs(["📅 快速點名", "🏆 成績登記", "📊 查看總表"])
 today = datetime.now().strftime("%Y-%m-%d")
 
@@ -51,7 +56,9 @@ with tab1:
     with st.form("att_form"):
         for i, row in df.iterrows():
             c1, c2 = st.columns([1, 2])
-            c1.write(f"**{row.get('座號', i+1)}號 {row['姓名']}**")
+            # 優先顯示座號，沒有的話顯示姓名
+            label = f"{row.get('座號', '')}號 {row['姓名']}"
+            c1.write(f"**{label}**")
             res = c2.segmented_control(
                 "狀態", ["出席", "遲到", "缺席", "公假"], 
                 default=row[today], 
@@ -67,14 +74,15 @@ with tab1:
 
 with tab2:
     st.subheader("🏆 測驗成績登記")
-    test_item = st.text_input("測驗項目名稱", "體適能測驗")
+    test_item = st.text_input("測驗項目名稱 (例如: 800M跑, 跳繩)", "體適能表現")
     if test_item not in df.columns:
         df[test_item] = 0.0
 
     with st.form("score_form"):
         for i, row in df.iterrows():
             c1, c2 = st.columns([1, 2])
-            c1.write(f"**{row.get('座號', i+1)}號 {row['姓名']}**")
+            label = f"{row.get('座號', '')}號 {row['姓名']}"
+            c1.write(f"**{label}**")
             score = c2.number_input("分數", value=float(df.at[i, test_item]), key=f"s_{selected_class}_{i}", label_visibility="collapsed")
             df.at[i, test_item] = score
         if st.form_submit_button("💾 儲存成績"):
