@@ -4,16 +4,17 @@ import pandas as pd
 from datetime import datetime
 
 # 1. 網頁基礎設定
-st.set_page_config(page_title="體育教學管理系統", layout="wide")
+st.set_page_config(page_title="體育課管理系統", layout="wide")
 
-# 2. 針對 9:16 比例、顏色鎖定、完全無間隔的 CSS
+# 2. 強力 CSS：強制移除所有間距、邊距與留白
 st.markdown("""<style>
-    /* 移除所有邊距，讓畫面最滿 */
-    .main .block-container { padding: 0.2rem 0.1rem; }
-    [data-testid="stVerticalBlock"] > div { gap: 0rem !important; }
-    [data-testid="column"] { padding: 0px !important; }
-    
-    /* 統計看板：加入底色、指定純黑與男女專屬色 */
+    /* 移除全網頁與表單內部的留白 */
+    .main .block-container { padding: 0rem 0.1rem !important; }
+    div[data-testid="stVerticalBlock"] > div { gap: 0rem !important; margin: 0px !important; padding: 0px !important; }
+    div[data-testid="stForm"] { padding: 0px !important; border: none !important; }
+    div[data-testid="column"] { padding: 0px !important; }
+
+    /* 統計看板：鎖定顏色與底色 */
     .stat-row {
         display: flex; justify-content: space-around; background-color: #e9ecef;
         padding: 5px 0; margin-bottom: 2px; border-radius: 4px;
@@ -24,31 +25,34 @@ st.markdown("""<style>
     .stat-val-boy { font-weight: 900; font-size: 1em; color: #007bff; }
     .stat-val-girl { font-weight: 900; font-size: 1em; color: #d63384; }
 
-    /* 學生列：強行同列、完全移除橫線與間隔 */
+    /* 學生列：強行同列且高度壓縮 (零間距) */
     .student-row { 
-        padding: 0px; 
-        margin: 0px;
+        padding: 0px !important; 
+        margin: 0px !important;
         display: flex;
         align-items: center;
-        height: 38px; /* 固定高度讓排列更整齊 */
+        height: 36px; /* 限制高度達到零間隔感 */
+        border: none !important;
     }
     
-    /* 姓名樣式：藍、粉紅、黑 */
-    .boy-name { color: #007bff; font-weight: bold; font-size: 0.82em; white-space: nowrap; }
-    .girl-name { color: #d63384; font-weight: bold; font-size: 0.82em; white-space: nowrap; }
-    .normal-name { color: #000000; font-weight: bold; font-size: 0.82em; white-space: nowrap; }
+    /* 姓名樣式：固定寬度與顏色 */
+    .boy-name { color: #007bff; font-weight: bold; font-size: 0.85em; overflow: hidden; }
+    .girl-name { color: #d63384; font-weight: bold; font-size: 0.85em; overflow: hidden; }
+    .normal-name { color: #000000; font-weight: bold; font-size: 0.85em; }
 
-    /* 調整按鈕與輸入框高度 */
-    .stSegmentedControl { height: 32px !important; }
-    .stNumberInput { height: 32px !important; }
+    /* 隱藏 segmented control 的外框多餘留白 */
+    .stSegmentedControl { margin: 0px !important; padding: 0px !important; }
 
     /* 儲存按鈕：黑底白字 */
     .stButton>button { 
         width: 100%; height: 2.8em; background-color: #000; color: white; border-radius: 4px; margin-top: 5px; 
     }
     
-    @media (min-width: 1024px) { .main .block-container { max-width: 380px; margin: auto; } }
+    @media (min-width: 1024px) { .main .block-container { max-width: 400px; margin: auto; } }
 </style>""", unsafe_allow_html=True)
+
+# --- 標題區 ---
+st.markdown("### 【體育課成績/出缺席登錄】")
 
 conn = st.connection("gsheets", type=GSheetsConnection)
 
@@ -74,11 +78,11 @@ tab1, tab2, tab3 = st.tabs(["📅 點名", "🏆 成績", "📊 總表"])
 with tab1:
     df_att = load_data("點名")
     if not df_att.empty:
-        # 統計看板 (班級與總數黑、男藍、女粉)
+        # 統計看板 (黑/藍/粉紅)
         b, g = len(df_att[df_att['性別']=='男']), len(df_att[df_att['性別']=='女'])
         st.markdown(f'<div class="stat-row"><div class="stat-box"><span class="stat-label">班級</span><span class="stat-val-black">{selected_class}</span></div><div class="stat-box"><span class="stat-label">男生</span><span class="stat-val-boy">{b}</span></div><div class="stat-box"><span class="stat-label">女生</span><span class="stat-val-girl">{g}</span></div><div class="stat-box"><span class="stat-label">總人數</span><span class="stat-val-black">{len(df_att)}</span></div></div>', unsafe_allow_html=True)
         
-        df_att[date_str] = "出席" # 強制預設
+        df_att[date_str] = "出席"
         options = ["出席", "遲到", "缺席", "公假"]
         
         with st.form("att_form"):
@@ -94,9 +98,9 @@ with tab1:
                 st.markdown("</div>", unsafe_allow_html=True)
             if st.form_submit_button("🚀 儲存今日點名"):
                 conn.update(worksheet=f"{selected_class}_點名", data=df_att)
-                st.success("點名成功！")
+                st.success("存檔成功")
     else:
-        st.warning("請先建立 [班級_點名] 分頁")
+        st.warning("請先建立分頁")
 
 # --- Tab 2: 成績介面 ---
 with tab2:
@@ -114,7 +118,7 @@ with tab2:
         with st.form("score_form"):
             for i, row in df_score.iterrows():
                 st.markdown("<div class='student-row'>", unsafe_allow_html=True)
-                c1, c2 = st.columns([1, 2.5]) # 調整比例確保同列
+                c1, c2 = st.columns([1, 2.5])
                 name_t = f"{row['座號']}.{row['姓名']}"
                 if row['性別']=="男": c1.markdown(f"<span class='boy-name'>{name_t}</span>", unsafe_allow_html=True)
                 elif row['性別']=="女": c1.markdown(f"<span class='girl-name'>{name_t}</span>", unsafe_allow_html=True)
@@ -123,9 +127,7 @@ with tab2:
                 st.markdown("</div>", unsafe_allow_html=True)
             if st.form_submit_button(f"💾 儲存 {test_item} 成績"):
                 conn.update(worksheet=f"{selected_class}_成績", data=df_score)
-                st.success("成績儲存成功！")
-    else:
-        st.warning("請先建立 [班級_成績] 分頁")
+                st.success("成績已儲存")
 
 with tab3:
     st.dataframe(df_att, hide_index=True)
