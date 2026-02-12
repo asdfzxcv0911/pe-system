@@ -45,7 +45,6 @@ date_str = selected_date.strftime("%Y-%m-%d")
 def load_data(sheet_suffix):
     try:
         sheet_name = f"{selected_class}_{sheet_suffix}"
-        # 讀取完整資料表
         data = conn.read(worksheet=sheet_name, ttl=0).dropna(how='all', subset=['姓名'])
         data['座號'] = data['座號'].astype(str).str.split('.').str[0]
         return data
@@ -53,7 +52,7 @@ def load_data(sheet_suffix):
 
 tab1, tab2, tab3 = st.tabs(["📅 點名", "🏆 成績", "📊 總表"])
 
-# --- Tab 1: 點名 (維持現狀) ---
+# --- Tab 1: 點名 ---
 with tab1:
     df_att = load_data("點名")
     if not df_att.empty:
@@ -72,21 +71,31 @@ with tab1:
                 st.markdown("</div>", unsafe_allow_html=True)
             if st.form_submit_button("🚀 儲存今日點名"):
                 conn.update(worksheet=f"{selected_class}_點名", data=df_att)
-                st.success("點名已同步")
+                st.success("已同步至雲端")
 
-# --- Tab 2: 成績 (修復自動讀取邏輯) ---
+# --- Tab 2: 成績 (自動記憶自訂項目) ---
 with tab2:
     df_score = load_data("成績")
     if not df_score.empty:
-        mode = st.radio("模式", ["現有項目", "自訂"], horizontal=True)
-        test_item = st.selectbox("項目", ["體適能-800m", "體適能-仰臥捲腹", "體適能-立定跳遠", "體適能-坐姿體前彎", "平時成績"]) if mode == "現有項目" else st.text_input("輸入名稱", placeholder="請輸入測驗名稱")
+        # 💡 自動讀取試算表中的所有現有測驗項目
+        standard_items = ["體適能-800m", "體適能-仰臥捲腹", "體適能-立定跳遠", "體適能-坐姿體前彎", "平時成績"]
+        # 找出表格中除了 metadata 以外的所有欄位
+        existing_cols = [c for c in df_score.columns if c not in ['座號', '姓名', '性別', '座號 ', '姓名 ', '性別 ']]
+        # 合併並去重，讓原本自訂的項目也能出現在選單中
+        test_options = sorted(list(set(standard_items + existing_cols)))
+        
+        mode = st.radio("模式", ["選擇現有/自訂項目", "新增項目"], horizontal=True)
+        
+        if mode == "選擇現有/自訂項目":
+            test_item = st.selectbox("請選擇測驗項目", test_options)
+        else:
+            test_item = st.text_input("輸入新項目名稱", placeholder="例如：跳繩、仰臥起坐")
         
         if test_item and test_item.strip():
-            # 💡 重要修復：如果欄位不存在，才初始化為 None；如果已存在，則保留原始值
             if test_item not in df_score.columns:
                 df_score[test_item] = None
             
-            # 強制將該欄位轉換為數字型態，否則 number_input 可能無法讀取
+            # 確保舊數據能正確讀取顯示
             df_score[test_item] = pd.to_numeric(df_score[test_item], errors='coerce')
             
             with st.form("score_form"):
@@ -97,17 +106,14 @@ with tab2:
                     if row['性別']=="男": c1.markdown(f"<span class='boy-name'>{name_t}</span>", unsafe_allow_html=True)
                     elif row['性別']=="女": c1.markdown(f"<span class='girl-name'>{name_t}</span>", unsafe_allow_html=True)
                     
-                    # 讀取該生在該項目的現有成績
-                    current_score = df_score.at[i, test_item]
-                    # 如果有成績就顯示數字，沒有則維持 None (空白)
-                    val = float(current_score) if pd.notnull(current_score) else None
-                    
-                    df_score.at[i, test_item] = c2.number_input("N", value=val, placeholder="未測驗", key=f"s_{selected_class}_{i}", label_visibility="collapsed")
+                    # 讀取舊分數，若無則顯示空白 (移除 0.00)
+                    val = float(row[test_item]) if pd.notnull(row[test_item]) else None
+                    df_score.at[i, test_item] = c2.number_input("N", value=val, placeholder="未測", key=f"s_{selected_class}_{i}", label_visibility="collapsed")
                     st.markdown("</div>", unsafe_allow_html=True)
                 if st.form_submit_button(f"💾 儲存 {test_item} 成績"):
                     conn.update(worksheet=f"{selected_class}_成績", data=df_score)
-                    st.success("成績已存檔並讀取")
-        else: st.info("請選擇或輸入測驗名稱")
+                    st.success(f"{test_item} 已存檔")
+        else: st.info("💡 請選擇或新增測驗項目")
 
 with tab3:
     st.write("點名歷史")
